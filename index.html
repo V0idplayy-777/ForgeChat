@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ForgeChat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;900&family=Inconsolata:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <defs>
+
+    <!-- Hammer logo mark -->
+    <symbol id="icon-hammer" viewBox="0 0 32 32" fill="none">
+      <rect x="17" y="4" width="11" height="7" rx="1" fill="currentColor"/>
+      <rect x="14" y="8" width="5" height="3" rx="0.5" fill="currentColor"/>
+      <rect x="6" y="9" width="11" height="4" rx="0.5" transform="rotate(-45 6 9)"
+            fill="currentColor"/>
+      <rect x="4" y="20" width="5" height="10" rx="1"
+            transform="rotate(-45 4 20)" fill="currentColor" opacity="0.75"/>
+    </symbol>
+
+    <!-- Person+ (add friend) -->
+    <symbol id="icon-person-add" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="8" cy="6" r="3"/>
+      <path d="M2 17c0-3.314 2.686-5 6-5"/>
+      <path d="M15 11v6M12 14h6"/>
+    </symbol>
+
+    <!-- Bell (requests) -->
+    <symbol id="icon-bell" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 2a6 6 0 0 1 6 6v3l1.5 2.5H2.5L4 11V8a6 6 0 0 1 6-6z"/>
+      <path d="M8.5 17a1.5 1.5 0 0 0 3 0"/>
+    </symbol>
+
+    <!-- Users (friends) -->
+    <symbol id="icon-users" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="7" cy="7" r="3"/>
+      <path d="M1 17c0-3 2.5-5 6-5s6 2 6 5"/>
+      <path d="M13.5 5a3 3 0 1 1 0 4M17 17c0-2.5-1.5-4.5-3.5-5"/>
+    </symbol>
+
+    <!-- Send arrow -->
+    <symbol id="icon-send" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 3 3 9l5 2 2 5 7-13z"/>
+      <path d="M8 11l4-4"/>
+    </symbol>
+
+    <!-- Sign out -->
+    <symbol id="icon-signout" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 3H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4"/>
+      <path d="M13 14l4-4-4-4"/>
+      <path d="M17 10H7"/>
+    </symbol>
+
+    <!-- Chat bubble (empty state) -->
+    <symbol id="icon-chat" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 8a2 2 0 0 1 2-2h24a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H14l-8 6V8z"/>
+      <path d="M13 15h14M13 21h8"/>
+    </symbol>
+
+  </defs>
+</svg>
+
+</head>
+<body>
+<div id="sparks" aria-hidden="true"></div>
+
+<section id="auth-screen" class="screen auth-screen">
+  <div class="auth-card">
+    <div class="brand">
+      <svg class="logo-mark" aria-hidden="true"><use href="#icon-hammer"/></svg>
+      <h1>FORGECHAT</h1>
+    </div>
+    <p class="tagline">where words get hammered out</p>
+
+    <div class="auth-tabs" role="tablist">
+      <button class="tab-btn active" id="tab-signin" role="tab" aria-selected="true" type="button">Sign In</button>
+      <button class="tab-btn" id="tab-signup" role="tab" aria-selected="false" type="button">Sign Up</button>
+    </div>
+
+    <form id="signin-form" class="auth-form">
+      <label for="signin-email">Email</label>
+      <input type="email" id="signin-email" required autocomplete="email">
+      <label for="signin-password">Password</label>
+      <input type="password" id="signin-password" required autocomplete="current-password">
+      <button type="submit" class="btn-primary">Enter the forge</button>
+    </form>
+
+    <form id="signup-form" class="auth-form hidden">
+      <label for="signup-username">Username</label>
+      <input type="text" id="signup-username" required minlength="3" maxlength="20" pattern="[a-zA-Z0-9_]+">
+      <label for="signup-email">Email</label>
+      <input type="email" id="signup-email" required autocomplete="email">
+      <label for="signup-password">Password</label>
+      <input type="password" id="signup-password" required minlength="6" autocomplete="new-password">
+      <button type="submit" class="btn-primary">Forge an account</button>
+    </form>
+
+    <p id="auth-message" class="auth-message" role="status"></p>
+  </div>
+</section>
+
+<section id="app-shell" class="screen hidden">
+  <header class="topbar">
+    <div class="brand-small">
+      <svg class="logo-mark-sm" aria-hidden="true"><use href="#icon-hammer"/></svg>
+      <span>FORGECHAT</span>
+    </div>
+    <div class="topbar-right">
+      <span id="current-username" class="current-username"></span>
+      <button id="signout-btn" class="btn-ghost" type="button">
+        <svg class="btn-icon" aria-hidden="true"><use href="#icon-signout"/></svg>
+        Sign Out
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-block">
+        <h2>
+          <svg class="section-icon" aria-hidden="true"><use href="#icon-person-add"/></svg>
+          Add a Friend
+        </h2>
+        <form id="add-friend-form" class="add-friend-form">
+          <input type="text" id="add-friend-input" placeholder="username" required>
+          <button type="submit" class="btn-ember" aria-label="Send friend request">
+            <svg class="btn-icon" aria-hidden="true"><use href="#icon-send"/></svg>
+          </button>
+        </form>
+        <p id="add-friend-message" class="inline-message"></p>
+      </div>
+
+      <div class="sidebar-block">
+        <h2>
+          <svg class="section-icon" aria-hidden="true"><use href="#icon-bell"/></svg>
+          Requests
+          <span id="request-count" class="count-badge hidden">0</span>
+        </h2>
+        <ul id="requests-list" class="requests-list"></ul>
+      </div>
+
+      <div class="sidebar-block sidebar-block-grow">
+        <h2>
+          <svg class="section-icon" aria-hidden="true"><use href="#icon-users"/></svg>
+          Friends
+        </h2>
+        <ul id="friends-list" class="friends-list"></ul>
+      </div>
+    </aside>
+
+    <main class="chat-panel">
+      <div id="chat-empty" class="chat-empty">
+        <div class="chat-empty-inner">
+          <svg class="empty-icon" aria-hidden="true"><use href="#icon-chat"/></svg>
+          <p>Pick a friend from the roster to start chatting</p>
+        </div>
+      </div>
+      <div id="chat-active" class="chat-active hidden">
+        <div class="chat-header">
+          <span id="chat-friend-name"></span>
+        </div>
+        <div id="messages" class="messages"></div>
+        <form id="message-form" class="message-form">
+          <input type="text" id="message-input" placeholder="Say something..." autocomplete="off" required>
+          <button type="submit" class="btn-ember" aria-label="Send message">
+            <svg class="btn-icon" aria-hidden="true"><use href="#icon-send"/></svg>
+            Send
+          </button>
+        </form>
+      </div>
+    </main>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
