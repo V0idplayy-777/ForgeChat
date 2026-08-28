@@ -15,6 +15,7 @@ const state = {
   typingTimers: {},
   myTypingTimer: null,
   heartbeatTimer: null,
+  unreadCounts: {},
 };
 
 const el = {
@@ -164,6 +165,7 @@ function renderFriends() {
   state.friends.forEach((friend) => {
     const status = state.presenceMap[friend.id] || 'offline';
     const { cls, label } = getStatusMeta(status);
+    const count = state.unreadCounts[friend.id] || 0;
     const li = document.createElement('li');
     li.className = 'friend-item' + (friend.id === state.selectedFriendId ? ' active' : '');
     li.dataset.friendId = friend.id;
@@ -171,10 +173,30 @@ function renderFriends() {
       <span class="presence-dot ${cls}" title="${label}"></span>
       <span class="friend-name">@${friend.username}</span>
       <span class="friend-status-label ${cls}">${label}</span>
+      ${count > 0 ? `<span class="unread-badge">${count}</span>` : ''}
     `;
     li.addEventListener('click', () => selectFriend(friend));
     el.friendsList.appendChild(li);
   });
+}
+
+function updateFriendUnreadBadge(friendId) {
+  const li = el.friendsList.querySelector(`[data-friend-id="${friendId}"]`);
+  if (!li) return;
+  const count = state.unreadCounts[friendId] || 0;
+  let badge = li.querySelector('.unread-badge');
+  if (count > 0) {
+    if (badge) {
+      badge.textContent = count;
+    } else {
+      badge = document.createElement('span');
+      badge.className = 'unread-badge';
+      badge.textContent = count;
+      li.appendChild(badge);
+    }
+  } else {
+    if (badge) badge.remove();
+  }
 }
 
 function updateFriendPresenceDot(userId) {
@@ -260,6 +282,8 @@ el.removeFriendBtn.addEventListener('click', async () => {
 
 async function selectFriend(friend) {
   state.selectedFriendId = friend.id;
+  state.unreadCounts[friend.id] = 0;
+  updateFriendUnreadBadge(friend.id);
   el.chatEmpty.classList.add('hidden');
   el.chatActive.classList.remove('hidden');
   el.chatFriendName.textContent = '@' + friend.username;
@@ -408,16 +432,20 @@ function subscribeRealtime() {
   state.mainChannel = client
     .channel('forgechat-main')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-      const msg = payload.new;
-      const uid = state.user.id;
-      if (msg.sender_id !== uid && msg.receiver_id !== uid) return;
-      const otherId = msg.sender_id === uid ? msg.receiver_id : msg.sender_id;
-      hideTyping(otherId);
-      if (otherId === state.selectedFriendId) {
-        renderMessage(msg);
-        el.messages.scrollTop = el.messages.scrollHeight;
-      }
-    })
+  const msg = payload.new;
+  const uid = state.user.id;
+  if (msg.sender_id !== uid && msg.receiver_id !== uid) return;
+  const otherId = msg.sender_id === uid ? msg.receiver_id : msg.sender_id;
+  hideTyping(otherId);
+  if (otherId === state.selectedFriendId) {
+    renderMessage(msg);
+    el.messages.scrollTop = el.messages.scrollHeight;
+  } else if (msg.sender_id !== uid) {
+    if (!state.unreadCounts[otherId]) state.unreadCounts[otherId] = 0;
+    state.unreadCounts[otherId] += 1;
+    updateFriendUnreadBadge(otherId);
+  }
+})
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, (payload) => {
       if (payload.new.receiver_id === state.user.id) loadRequests();
     })
