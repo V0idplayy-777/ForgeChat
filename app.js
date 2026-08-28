@@ -48,6 +48,12 @@ const el = {
   imageInput: document.getElementById('image-input'),
 };
 
+const ADMIN_USERNAMES = ['V0idplayy', 'Nikocadoavocado'];
+
+function isAdmin() {
+  return state.profile && ADMIN_USERNAMES.includes(state.profile.username);
+}
+
 function switchTab(tab) {
   const isSignin = tab === 'signin';
   el.tabSignin.classList.toggle('active', isSignin);
@@ -91,6 +97,13 @@ el.signoutBtn.addEventListener('click', async () => {
   await client.auth.signOut();
 });
 
+document.getElementById('profile-settings-btn').addEventListener('click', openProfileModal);
+document.getElementById('modal-close-btn').addEventListener('click', closeProfileModal);
+document.getElementById('profile-modal').addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-overlay')) closeProfileModal();
+});
+document.getElementById('profile-form').addEventListener('submit', saveProfile);
+
 client.auth.onAuthStateChange((event, session) => {
   if (session?.user) enterApp(session.user);
   else exitApp();
@@ -102,11 +115,15 @@ async function enterApp(user) {
   el.appShell.classList.remove('hidden');
 
   const { data: profile } = await client
-    .from('profiles').select('id, username, streak, last_message_date').eq('id', user.id).single();
+    .from('profiles').select('id, username, streak, last_message_date, avatar_url, bio, status_message')
+    .eq('id', user.id).single();
   state.profile = profile;
   state.streak = profile?.streak ?? 0;
   state.lastMessageDate = profile?.last_message_date ?? null;
   el.currentUsername.textContent = profile ? '@' + profile.username : '';
+  updateTopBarStatus();
+  updateMyProfileDisplay();
+  toggleAdminButton();
   await checkAndResetStreak();
   updateStreakDisplay();
 
@@ -141,13 +158,13 @@ async function loadFriends() {
   const uid = state.user.id;
   const { data, error } = await client
     .from('friend_requests')
-    .select('id, sender_id, receiver_id, sender:sender_id(id,username), receiver:receiver_id(id,username)')
+    .select('id, sender_id, receiver_id, sender:sender_id(id,username,avatar_url,status_message), receiver:receiver_id(id,username,avatar_url,status_message)')
     .eq('status', 'accepted')
     .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`);
   if (error) return;
   state.friends = data.map((row) => {
     const friend = row.sender_id === uid ? row.receiver : row.sender;
-    return { id: friend.id, username: friend.username, rowId: row.id };
+    return { id: friend.id, username: friend.username, avatar_url: friend.avatar_url, status_message: friend.status_message, rowId: row.id };
   });
   renderFriends();
 }
@@ -178,9 +195,14 @@ function renderFriends() {
     const li = document.createElement('li');
     li.className = 'friend-item' + (friend.id === state.selectedFriendId ? ' active' : '');
     li.dataset.friendId = friend.id;
+    const avatarHtml = friend.avatar_url
+      ? `<img class="friend-avatar" src="${friend.avatar_url}" alt="">`
+      : `<span class="friend-avatar-letter">${friend.username.charAt(0).toUpperCase()}</span>`;
+    const statusMsg = friend.status_message ? `<span class="friend-status-msg">${escapeHtml(friend.status_message)}</span>` : '';
     li.innerHTML = `
-      <span class="presence-dot ${cls}" title="${label}"></span>
+      ${avatarHtml}
       <span class="friend-name">@${friend.username}</span>
+      ${statusMsg}
       <span class="friend-status-label ${cls}">${label}</span>
       ${count > 0 ? `<span class="unread-badge">${count}</span>` : ''}
     `;
@@ -231,6 +253,120 @@ function updateStreakDisplay() {
     elStreak.textContent = '';
     elStreak.style.display = 'none';
   }
+}
+
+function updateTopBarStatus() {
+  const statusEl = document.getElementById('current-username');
+  if (state.profile) {
+    let text = '@' + state.profile.username;
+    if (state.profile.status_message) {
+      text += ' — ' + state.profile.status_message;
+    }
+    statusEl.textContent = text;
+  }
+}
+
+function updateMyProfileDisplay() {
+  if (!state.profile) return;
+  const avatarEl = document.getElementById('my-profile-avatar');
+  if (state.profile.avatar_url) {
+    avatarEl.innerHTML = `<img src="${state.profile.avatar_url}" alt="" class="friend-avatar" style="width:32px;height:32px;">`;
+  } else {
+    avatarEl.innerHTML = state.profile.username.charAt(0).toUpperCase();
+    avatarEl.className = 'friend-avatar-letter';
+  }
+  document.getElementById('my-profile-username').textContent = '@' + state.profile.username;
+  document.getElementById('my-profile-status').textContent = state.profile.status_message || '';
+  document.getElementById('my-profile-bio').textContent = state.profile.bio || '';
+}
+
+function toggleAdminButton() {
+  const btn = document.getElementById('admin-panel-btn');
+  if (isAdmin()) {
+    btn.classList.remove('admin-only');
+  } else {
+    btn.classList.add('admin-only');
+  }
+}
+
+function renderAutocompleteItems(users) {
+  const container = document.getElementById('add-friend-autocomplete');
+  container.innerHTML = '';
+  if (!users || users.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+  container.classList.remove('hidden');
+  users.forEach(user => {
+    const div = document.createElement('div');
+    div.className = 'autocomplete-item';
+    const avatar = user.avatar_url
+      ? `<img class="friend-avatar" src="${user.avatar_url}" alt="">`
+      : `<span class="friend-avatar-letter">${user.username.charAt(0).toUpperCase()}</span>`;
+    div.innerHTML = `${avatar} @${user.username}`;
+    div.dataset.username = user.username;
+    div.addEventListener('click', () => {
+      document.getElementById('add-friend-input').value = user.username;
+      container.classList.add('hidden');
+      document.getElementById('add-friend-form').dispatchEvent(new Event('submit'));
+    });
+    container.appendChild(div);
+  });
+}
+
+async function searchUsersForAutocomplete(query) {
+  if (!query || query.length < 1) {
+    renderAutocompleteItems([]);
+    return;
+  }
+  const uid = state.user.id;
+  const friendIds = state.friends.map(f => f.id);
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, username, avatar_url')
+    .ilike('username', `%${query}%`)
+    .not('id', 'eq', uid)
+    .not('id', 'in', `(${friendIds.join(',')})`)
+    .limit(10);
+  if (error) {
+    renderAutocompleteItems([]);
+    return;
+  }
+  renderAutocompleteItems(data || []);
+}
+
+async function loadAllUsersForAdmin() {
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, username, avatar_url, bio, status_message')
+    .order('username');
+  if (error) {
+    document.getElementById('admin-results').innerHTML = `<div class="admin-empty">Error loading users.</div>`;
+    return;
+  }
+  renderAdminUsers(data || []);
+}
+
+function renderAdminUsers(users) {
+  const container = document.getElementById('admin-results');
+  if (!users || users.length === 0) {
+    container.innerHTML = `<div class="admin-empty">No users found.</div>`;
+    return;
+  }
+  const html = users.map(user => {
+    const avatar = user.avatar_url
+      ? `<img class="friend-avatar" src="${user.avatar_url}" alt="">`
+      : `<span class="friend-avatar-letter">${user.username.charAt(0).toUpperCase()}</span>`;
+    return `<div class="admin-user-item">
+      ${avatar}
+      <div class="admin-user-info">
+        <span class="admin-user-name">@${user.username}</span>
+        <span class="admin-user-status">${user.status_message || ''}</span>
+        <span class="admin-user-bio">${user.bio || ''}</span>
+      </div>
+    </div>`;
+  }).join('');
+  container.innerHTML = html;
 }
 
 async function checkAndResetStreak() {
@@ -343,12 +479,21 @@ async function selectFriend(friend) {
   el.chatEmpty.classList.add('hidden');
   el.chatActive.classList.remove('hidden');
   el.chatFriendName.textContent = '@' + friend.username;
+  const avatarEl = document.getElementById('chat-friend-avatar');
+  if (friend.avatar_url) {
+    avatarEl.innerHTML = `<img src="${friend.avatar_url}" alt="" class="chat-avatar-img">`;
+  } else {
+    avatarEl.innerHTML = friend.username.charAt(0).toUpperCase();
+    avatarEl.className = 'chat-avatar-letter';
+  }
+
+  document.getElementById('chat-friend-status-msg').textContent = friend.status_message || '';
+  
   updateChatHeaderStatus(friend.id);
   renderFriends();
   hideTyping(friend.id);
   await loadMessages(friend.id);
 }
-
 async function loadMessages(friendId) {
   const uid = state.user.id;
   const { data, error } = await client
@@ -531,5 +676,219 @@ function subscribeRealtime() {
         hideTyping(from);
       }
     })
+
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
+  const row = payload.new;
+  const friend = state.friends.find(f => f.id === row.id);
+  if (friend) {
+    friend.avatar_url = row.avatar_url;
+    friend.status_message = row.status_message;
+    renderFriends();
+    if (state.selectedFriendId === row.id) {
+      const avatarEl = document.getElementById('chat-friend-avatar');
+      if (row.avatar_url) {
+        avatarEl.innerHTML = `<img src="${row.avatar_url}" alt="" class="chat-avatar-img">`;
+      } else {
+        avatarEl.innerHTML = row.username ? row.username.charAt(0).toUpperCase() : '?';
+        avatarEl.className = 'chat-avatar-letter';
+      }
+    }
+  }
+})
+
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload) => {
+      const row = payload.new;
+      if (row.id === state.user.id) {
+        state.profile.avatar_url = row.avatar_url;
+        state.profile.bio = row.bio;
+        state.profile.status_message = row.status_message;
+        updateMyProfileDisplay();
+        updateTopBarStatus();
+      }
+      const friend = state.friends.find(f => f.id === row.id);
+      if (friend) {
+        friend.avatar_url = row.avatar_url;
+        friend.status_message = row.status_message;
+        renderFriends();
+        if (state.selectedFriendId === row.id) {
+          const avatarEl = document.getElementById('chat-friend-avatar');
+          if (row.avatar_url) {
+            avatarEl.innerHTML = `<img src="${row.avatar_url}" alt="" class="chat-avatar-img">`;
+          } else {
+            avatarEl.innerHTML = row.username ? row.username.charAt(0).toUpperCase() : '?';
+            avatarEl.className = 'chat-avatar-letter';
+          }
+          document.getElementById('chat-friend-status-msg').textContent = row.status_message || '';
+        }
+      }
+    })
     .subscribe();
 }
+
+function openProfileModal() {
+  document.getElementById('profile-modal').classList.remove('hidden');
+  if (state.profile) {
+    const preview = document.getElementById('profile-avatar-preview');
+    if (state.profile.avatar_url) {
+      preview.src = state.profile.avatar_url;
+      preview.style.display = 'block';
+    } else {
+      preview.src = '';
+      preview.style.display = 'none';
+    }
+    document.getElementById('profile-bio').value = state.profile.bio || '';
+    document.getElementById('profile-status').value = state.profile.status_message || '';
+  }
+  document.getElementById('profile-message').textContent = '';
+  document.getElementById('profile-avatar-upload').value = '';
+}
+
+function closeProfileModal() {
+  document.getElementById('profile-modal').classList.add('hidden');
+}
+
+async function saveProfile(e) {
+  e.preventDefault();
+  const fileInput = document.getElementById('profile-avatar-upload');
+  const bio = document.getElementById('profile-bio').value.trim();
+  const status = document.getElementById('profile-status').value.trim();
+  const messageEl = document.getElementById('profile-message');
+  messageEl.textContent = 'Saving...';
+
+  let avatarUrl = state.profile?.avatar_url || null;
+
+  if (fileInput.files && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    const ext = file.name.split('.').pop();
+    const path = `${state.user.id}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await client.storage
+      .from('avatars').upload(path, file, { contentType: file.type });
+    if (uploadError) {
+      messageEl.textContent = 'Avatar upload failed: ' + uploadError.message;
+      return;
+    }
+    const { data: urlData } = client.storage.from('avatars').getPublicUrl(path);
+    avatarUrl = urlData.publicUrl;
+  }
+
+  const { error } = await client.from('profiles')
+    .update({ avatar_url: avatarUrl, bio: bio || null, status_message: status || null })
+    .eq('id', state.user.id);
+  if (error) {
+    messageEl.textContent = 'Error: ' + error.message;
+    return;
+  }
+  if (state.profile) {
+    state.profile.avatar_url = avatarUrl;
+    state.profile.bio = bio || null;
+    state.profile.status_message = status || null;
+  }
+  updateTopBarStatus();
+  updateMyProfileDisplay();
+  closeProfileModal();
+  messageEl.textContent = 'Profile updated!';
+}
+
+document.getElementById('remove-avatar-btn').addEventListener('click', async () => {
+  if (!state.profile?.avatar_url) return;
+  if (!confirm('Remove your avatar?')) return;
+  const { error } = await client.from('profiles')
+    .update({ avatar_url: null })
+    .eq('id', state.user.id);
+  if (error) { alert('Error: ' + error.message); return; }
+  state.profile.avatar_url = null;
+  updateMyProfileDisplay();
+  updateTopBarStatus();
+  document.getElementById('profile-avatar-preview').src = '';
+  document.getElementById('profile-avatar-preview').style.display = 'none';
+});
+
+document.getElementById('my-profile-edit-btn').addEventListener('click', openProfileModal);
+
+document.getElementById('admin-panel-btn').addEventListener('click', openAdminPanel);
+document.getElementById('admin-modal-close').addEventListener('click', closeAdminPanel);
+document.getElementById('admin-modal').addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-overlay')) closeAdminPanel();
+});
+
+function openAdminPanel() {
+  if (!isAdmin()) return;
+  document.getElementById('admin-modal').classList.remove('hidden');
+  document.getElementById('admin-search-input').value = '';
+  loadAllUsersForAdmin();
+}
+
+function closeAdminPanel() {
+  document.getElementById('admin-modal').classList.add('hidden');
+}
+
+async function searchUsers(query) {
+  if (!query.trim()) {
+    document.getElementById('admin-results').innerHTML = '<p style="color:var(--text-dim);">Enter a search term to find users.</p>';
+    return;
+  }
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, username, avatar_url, bio, status_message')
+    .ilike('username', `%${query}%`)
+    .limit(50);
+  if (error) {
+    document.getElementById('admin-results').innerHTML = '<p style="color:var(--red);">Error: ' + error.message + '</p>';
+    return;
+  }
+  if (!data || data.length === 0) {
+    document.getElementById('admin-results').innerHTML = '<p style="color:var(--text-dim);">No users found.</p>';
+    return;
+  }
+  const html = data.map(user => {
+    const avatar = user.avatar_url
+      ? `<img class="friend-avatar" src="${user.avatar_url}" alt="">`
+      : `<span class="friend-avatar-letter">${user.username.charAt(0).toUpperCase()}</span>`;
+    return `<div class="admin-user-item">
+      ${avatar}
+      <div class="admin-user-info">
+        <span class="admin-user-name">@${user.username}</span>
+        <span class="admin-user-status">${user.status_message || ''}</span>
+        <span class="admin-user-bio">${user.bio || ''}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('admin-results').innerHTML = html;
+}
+
+document.getElementById('admin-search-input').addEventListener('input', (e) => {
+  const query = e.target.value.trim();
+  if (!query) {
+    loadAllUsersForAdmin();
+    return;
+  }
+
+  client.from('profiles')
+    .select('id, username, avatar_url, bio, status_message')
+    .ilike('username', `%${query}%`)
+    .order('username')
+    .then(({ data, error }) => {
+      if (error) {
+        document.getElementById('admin-results').innerHTML = `<div class="admin-empty">Error searching.</div>`;
+        return;
+      }
+      renderAdminUsers(data || []);
+    });
+});
+
+document.getElementById('add-friend-input').addEventListener('blur', () => {
+  setTimeout(() => {
+    document.getElementById('add-friend-autocomplete').classList.add('hidden');
+  }, 200);
+});
+
+let autocompleteTimeout = null;
+document.getElementById('add-friend-input').addEventListener('input', (e) => {
+  const query = e.target.value.trim();
+  clearTimeout(autocompleteTimeout);
+  if (!query) {
+    document.getElementById('add-friend-autocomplete').classList.add('hidden');
+    return;
+  }
+  autocompleteTimeout = setTimeout(() => searchUsersForAutocomplete(query), 300);
+});
