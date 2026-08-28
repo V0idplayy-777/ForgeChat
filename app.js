@@ -102,9 +102,13 @@ async function enterApp(user) {
   el.appShell.classList.remove('hidden');
 
   const { data: profile } = await client
-    .from('profiles').select('id, username').eq('id', user.id).single();
+    .from('profiles').select('id, username, streak, last_message_date').eq('id', user.id).single();
   state.profile = profile;
+  state.streak = profile?.streak ?? 0;
+  state.lastMessageDate = profile?.last_message_date ?? null;
   el.currentUsername.textContent = profile ? '@' + profile.username : '';
+  await checkAndResetStreak();
+  updateStreakDisplay();
 
   await loadFriends();
   await loadRequests();
