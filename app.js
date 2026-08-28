@@ -392,12 +392,12 @@ el.imageInput.addEventListener('change', async () => {
   if (uploadError) { alert('Image upload failed: ' + uploadError.message); return; }
   const { data: urlData } = client.storage.from('chat-images').getPublicUrl(path);
   await client.from('messages').insert({
-    await updateStreakAfterMessage();
     sender_id: state.user.id,
     receiver_id: state.selectedFriendId,
     content: '',
     image_url: urlData.publicUrl,
   });
+  await updateStreakAfterMessage();
 });
 
 el.messageForm.addEventListener('submit', async (e) => {
@@ -407,11 +407,11 @@ el.messageForm.addEventListener('submit', async (e) => {
   el.messageInput.value = '';
   broadcastTyping(false);
   await client.from('messages').insert({
-    await updateStreakAfterMessage();
     sender_id: state.user.id,
     receiver_id: state.selectedFriendId,
     content, image_url: null,
   });
+  await updateStreakAfterMessage();
 });
 
 el.messageInput.addEventListener('input', () => {
