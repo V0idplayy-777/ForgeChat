@@ -123,6 +123,9 @@ function exitApp() {
   state.requests = [];
   state.selectedFriendId = null;
   state.presenceMap = {};
+  state.streak = 0;
+  state.lastMessageDate = null;
+  updateStreakDisplay();
   clearInterval(state.heartbeatTimer);
   if (state.mainChannel) { client.removeChannel(state.mainChannel); state.mainChannel = null; }
   el.appShell.classList.add('hidden');
@@ -217,6 +220,53 @@ function updateFriendPresenceDot(userId) {
   lbl.className = `friend-status-label ${cls}`;
   lbl.textContent = label;
   if (userId === state.selectedFriendId) updateChatHeaderStatus(userId);
+}
+
+function updateStreakDisplay() {
+  const elStreak = document.getElementById('streak-display');
+  if (state.streak > 0) {
+    elStreak.textContent = '🔥 ' + state.streak;
+    elStreak.style.display = 'inline';
+  } else {
+    elStreak.textContent = '';
+    elStreak.style.display = 'none';
+  }
+}
+
+async function checkAndResetStreak() {
+  if (!state.lastMessageDate) return;
+  const today = new Date().toISOString().split('T')[0];
+  const lastDate = state.lastMessageDate.split('T')[0];
+  const diffDays = Math.floor((new Date(today) - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+  if (diffDays > 1) {
+    state.streak = 0;
+    state.lastMessageDate = lastDate;
+    await client.from('profiles').update({ streak: 0 }).eq('id', state.user.id);
+    updateStreakDisplay();
+  }
+}
+
+async function updateStreakAfterMessage() {
+  const today = new Date().toISOString().split('T')[0];
+  const lastDate = state.lastMessageDate ? state.lastMessageDate.split('T')[0] : null;
+  let newStreak = state.streak;
+  let newLastDate = today;
+  if (!lastDate || lastDate !== today) {
+    const diffDays = lastDate ? Math.floor((new Date(today) - new Date(lastDate)) / (1000 * 60 * 60 * 24)) : null;
+    if (diffDays === null || diffDays > 1) {
+      newStreak = 1;
+    } else if (diffDays === 1) {
+      newStreak = state.streak + 1;
+    } else {
+      newStreak = state.streak; // same day, no change
+    }
+  }
+  if (newStreak !== state.streak || newLastDate !== state.lastMessageDate) {
+    state.streak = newStreak;
+    state.lastMessageDate = newLastDate;
+    await client.from('profiles').update({ streak: newStreak, last_message_date: newLastDate }).eq('id', state.user.id);
+    updateStreakDisplay();
+  }
 }
 
 function updateChatHeaderStatus(userId) {
@@ -342,6 +392,7 @@ el.imageInput.addEventListener('change', async () => {
   if (uploadError) { alert('Image upload failed: ' + uploadError.message); return; }
   const { data: urlData } = client.storage.from('chat-images').getPublicUrl(path);
   await client.from('messages').insert({
+    await updateStreakAfterMessage();
     sender_id: state.user.id,
     receiver_id: state.selectedFriendId,
     content: '',
@@ -356,6 +407,7 @@ el.messageForm.addEventListener('submit', async (e) => {
   el.messageInput.value = '';
   broadcastTyping(false);
   await client.from('messages').insert({
+    await updateStreakAfterMessage();
     sender_id: state.user.id,
     receiver_id: state.selectedFriendId,
     content, image_url: null,
