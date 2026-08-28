@@ -16,6 +16,8 @@ const state = {
   myTypingTimer: null,
   heartbeatTimer: null,
   unreadCounts: {},
+  streak: 0,
+  lastMessageDate: null,
 };
 
 const el = {
