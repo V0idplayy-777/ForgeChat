@@ -63,6 +63,21 @@
       <path d="M13 15h14M13 21h8"/>
     </symbol>
 
+    <symbol id="icon-settings" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="10" cy="10" r="2.5"/>
+  <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M13.9 13.9l1.4 1.4M6.1 6.1l-1.4-1.4"/>
+</symbol>
+
+<symbol id="icon-user" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="10" cy="7" r="3"/>
+  <path d="M3 17c0-3.314 2.686-6 6-6h2c3.314 0 6 2.686 6 6"/>
+</symbol>
+
+<symbol id="icon-admin" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M10 2.5L3 6v4c0 4 3 7 7 7s7-3 7-7V6l-7-3.5z"/>
+  <path d="M10 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
+  <path d="M12 12l-2 2-2-2"/>
+</symbol>
   </defs>
 </svg>
 
@@ -74,7 +89,7 @@
   <div class="auth-card">
     <div class="brand">
       <svg class="logo-mark" aria-hidden="true"><use href="#icon-hammer"/></svg>
-      <h1>FORGECHAT</h1>
+      <h1>FORGECHAT (broken! I'm fixing it!)</h1>
     </div>
     <p class="tagline">where words get hammered out</p>
 
@@ -112,13 +127,19 @@
       <span>FORGECHAT</span>
     </div>
     <div class="topbar-right">
-      <span id="current-username" class="current-username"></span>
-      <span id="streak-display" class="streak-display"></span>
-      <button id="signout-btn" class="btn-ghost" type="button">
-        <svg class="btn-icon" aria-hidden="true"><use href="#icon-signout"/></svg>
-        Sign Out
-      </button>
-    </div>
+  <span id="current-username" class="current-username"></span>
+  <span id="streak-display" class="streak-display"></span>
+  <button id="profile-settings-btn" class="btn-ghost" type="button" title="Edit profile">
+    <svg class="btn-icon" aria-hidden="true"><use href="#icon-settings"/></svg>
+  </button>
+  <button id="admin-panel-btn" class="btn-ghost admin-only" type="button" title="Admin Panel">
+  <svg class="btn-icon" aria-hidden="true"><use href="#icon-admin"/></svg>
+</button>
+  <button id="signout-btn" class="btn-ghost" type="button">
+    <svg class="btn-icon" aria-hidden="true"><use href="#icon-signout"/></svg>
+    Sign Out
+  </button>
+</div>
   </header>
 
   <div class="layout">
@@ -129,11 +150,15 @@
           Add a Friend
         </h2>
         <form id="add-friend-form" class="add-friend-form">
-          <input type="text" id="add-friend-input" placeholder="username" required>
-          <button type="submit" class="btn-ember" aria-label="Send friend request">
-            <svg class="btn-icon" aria-hidden="true"><use href="#icon-send"/></svg>
-          </button>
-        </form>
+  <div class="add-friend-input-wrapper">
+    <input type="text" id="add-friend-input" placeholder="username" required autocomplete="off">
+    <div id="add-friend-autocomplete" class="autocomplete-dropdown hidden"></div>
+  </div>
+  <button type="submit" class="btn-ember" aria-label="Send friend request">
+    <svg class="btn-icon" aria-hidden="true"><use href="#icon-send"/></svg>
+  </button>
+</form>
+<p id="add-friend-message" class="inline-message"></p>
         <p id="add-friend-message" class="inline-message"></p>
       </div>
 
@@ -153,6 +178,23 @@
         </h2>
         <ul id="friends-list" class="friends-list"></ul>
       </div>
+      <div class="sidebar-block" id="my-profile-block">
+  <h2>
+    <svg class="section-icon" aria-hidden="true"><use href="#icon-user"/></svg>
+    My Profile
+  </h2>
+  <div id="my-profile-display" class="my-profile-display">
+    <div class="my-profile-avatar-wrapper">
+      <span id="my-profile-avatar" class="friend-avatar-letter">?</span>
+    </div>
+    <div class="my-profile-info">
+      <span id="my-profile-username" class="my-profile-username"></span>
+      <span id="my-profile-status" class="my-profile-status"></span>
+      <span id="my-profile-bio" class="my-profile-bio"></span>
+    </div>
+    <button id="my-profile-edit-btn" class="btn-ghost" type="button">Edit</button>
+  </div>
+</div>
     </aside>
 
     <main class="chat-panel">
@@ -165,9 +207,15 @@
       <div id="chat-active" class="chat-active hidden">
         <div class="chat-header">
           <div class="chat-header-left">
-            <span id="chat-friend-name"></span>
-            <span id="chat-friend-status" class="chat-friend-status status-offline">Offline</span>
-          </div>
+  <div class="chat-header-avatar-wrapper">
+    <span id="chat-friend-avatar" class="chat-avatar-letter">?</span>
+  </div>
+  <div>
+    <span id="chat-friend-name"></span>
+    <span id="chat-friend-status" class="chat-friend-status status-offline">Offline</span>
+    <span id="chat-friend-status-msg" class="chat-friend-status-msg"></span>
+  </div>
+</div>
           <button id="remove-friend-btn" class="btn-remove-friend" type="button" title="Remove friend">
             <svg class="btn-icon" aria-hidden="true"><use href="#icon-remove"/></svg>
             Remove
@@ -195,6 +243,41 @@
     </main>
   </div>
 </section>
+
+<div id="profile-modal" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-card">
+    <button id="modal-close-btn" class="modal-close" type="button">&times;</button>
+    <h2>Edit Profile</h2>
+    <form id="profile-form" enctype="multipart/form-data">
+      <label for="profile-avatar-upload">Avatar</label>
+      <div class="avatar-upload-wrapper">
+        <img id="profile-avatar-preview" class="profile-avatar-preview" src="" alt="Avatar preview">
+        <input type="file" id="profile-avatar-upload" accept="image/*">
+        <button type="button" id="remove-avatar-btn" class="btn-ghost" style="margin-top:6px;">Remove Avatar</button>
+      </div>
+      <label for="profile-bio">Bio</label>
+      <textarea id="profile-bio" rows="2" placeholder="Tell us about yourself..."></textarea>
+      <label for="profile-status">Status message</label>
+      <input type="text" id="profile-status" placeholder="Eating pizza 🍕" maxlength="60">
+      <button type="submit" class="btn-primary">Save Profile</button>
+    </form>
+    <p id="profile-message" class="auth-message"></p>
+  </div>
+</div>
+
+<div id="admin-modal" class="modal hidden">
+  <div class="modal-overlay"></div>
+  <div class="modal-card" style="max-width:600px;">
+    <button id="admin-modal-close" class="modal-close" type="button">&times;</button>
+    <h2>Admin Panel</h2>
+    <div class="admin-search">
+  <input type="text" id="admin-search-input" placeholder="Search users by username..." autocomplete="off">
+</div>
+<div id="admin-results" class="admin-results"></div>
+
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
