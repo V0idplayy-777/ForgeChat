@@ -395,3 +395,21 @@ body::before {
   .sidebar { width: 100%; min-width: 0; max-height: 38vh; border-right: none; border-bottom: 2px solid var(--border); }
   .message-bubble { max-width: 78%; }
 }
+
+.unread-badge {
+  display: inline-block;
+  background: var(--red-hot);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  min-width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  border-radius: 4px;
+  padding: 0 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(214, 58, 42, 0.7);
+  font-family: 'Inconsolata', monospace;
+}
