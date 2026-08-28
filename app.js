@@ -28,23 +28,13 @@ const el = {
   chatEmpty: document.getElementById('chat-empty'),
   chatActive: document.getElementById('chat-active'),
   chatFriendName: document.getElementById('chat-friend-name'),
+  removeFriendBtn: document.getElementById('remove-friend-btn'),
   messages: document.getElementById('messages'),
   messageForm: document.getElementById('message-form'),
   messageInput: document.getElementById('message-input'),
+  imageInput: document.getElementById('image-input'),
   sparks: document.getElementById('sparks'),
 };
-
-function spawnSparks() {
-  for (let i = 0; i < 18; i++) {
-    const spark = document.createElement('div');
-    spark.className = 'spark';
-    spark.style.left = Math.random() * 100 + 'vw';
-    spark.style.animationDuration = 6 + Math.random() * 8 + 's';
-    spark.style.animationDelay = Math.random() * 10 + 's';
-    el.sparks.appendChild(spark);
-  }
-}
-spawnSparks();
 
 function switchTab(tab) {
   const isSignin = tab === 'signin';
@@ -149,7 +139,7 @@ async function loadFriends() {
 
   state.friends = data.map((row) => {
     const friend = row.sender_id === uid ? row.receiver : row.sender;
-    return { id: friend.id, username: friend.username };
+    return { id: friend.id, username: friend.username, rowId: row.id };
   });
   renderFriends();
 }
@@ -238,6 +228,23 @@ el.addFriendForm.addEventListener('submit', async (e) => {
   el.addFriendInput.value = '';
 });
 
+el.removeFriendBtn.addEventListener('click', async () => {
+  if (!state.selectedFriendId) return;
+  const friend = state.friends.find(f => f.id === state.selectedFriendId);
+  if (!friend) return;
+  if (!confirm(`Remove @${friend.username} as a friend?`)) return;
+
+  await client
+    .from('friend_requests')
+    .delete()
+    .eq('id', friend.rowId);
+
+  state.selectedFriendId = null;
+  el.chatActive.classList.add('hidden');
+  el.chatEmpty.classList.remove('hidden');
+  await loadFriends();
+});
+
 async function selectFriend(friend) {
   state.selectedFriendId = friend.id;
   el.chatEmpty.classList.add('hidden');
@@ -251,7 +258,7 @@ async function loadMessages(friendId) {
   const uid = state.user.id;
   const { data, error } = await client
     .from('messages')
-    .select('id, sender_id, content, created_at')
+    .select('id, sender_id, content, image_url, created_at')
     .or(`and(sender_id.eq.${uid},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${uid})`)
     .order('created_at', { ascending: true });
 
@@ -266,7 +273,12 @@ function renderMessage(msg) {
   const mine = msg.sender_id === state.user.id;
   div.className = 'message-bubble ' + (mine ? 'message-mine' : 'message-theirs');
   const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  div.innerHTML = `<span>${escapeHtml(msg.content)}</span><span class="message-time">${time}</span>`;
+
+  if (msg.image_url) {
+    div.innerHTML = `<img class="message-img" src="${msg.image_url}" alt="image" loading="lazy"><span class="message-time">${time}</span>`;
+  } else {
+    div.innerHTML = `<span>${escapeHtml(msg.content)}</span><span class="message-time">${time}</span>`;
+  }
   el.messages.appendChild(div);
 }
 
@@ -275,6 +287,33 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+el.imageInput.addEventListener('change', async () => {
+  const file = el.imageInput.files[0];
+  if (!file || !state.selectedFriendId) return;
+  el.imageInput.value = '';
+
+  const ext = file.name.split('.').pop();
+  const path = `${state.user.id}/${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await client.storage
+    .from('chat-images')
+    .upload(path, file, { contentType: file.type });
+
+  if (uploadError) {
+    alert('Image upload failed: ' + uploadError.message);
+    return;
+  }
+
+  const { data: urlData } = client.storage.from('chat-images').getPublicUrl(path);
+
+  await client.from('messages').insert({
+    sender_id: state.user.id,
+    receiver_id: state.selectedFriendId,
+    content: '',
+    image_url: urlData.publicUrl,
+  });
+});
 
 el.messageForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -285,6 +324,7 @@ el.messageForm.addEventListener('submit', async (e) => {
     sender_id: state.user.id,
     receiver_id: state.selectedFriendId,
     content,
+    image_url: null,
   });
 });
 
