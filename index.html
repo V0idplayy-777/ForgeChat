@@ -175,13 +175,22 @@
       </div>
       <div id="chat-active" class="chat-active hidden">
         <div class="chat-header">
-          <span id="chat-friend-name"></span>
+          <div class="chat-header-left">
+            <span id="chat-friend-name"></span>
+            <span id="chat-friend-status" class="chat-friend-status status-offline">Offline</span>
+          </div>
           <button id="remove-friend-btn" class="btn-remove-friend" type="button" title="Remove friend">
             <svg class="btn-icon" aria-hidden="true"><use href="#icon-remove"/></svg>
             Remove
           </button>
         </div>
         <div id="messages" class="messages"></div>
+        <div id="typing-indicator" class="typing-indicator hidden" aria-live="polite">
+          <div class="typing-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <span class="typing-label">typing</span>
+        </div>
         <form id="message-form" class="message-form">
           <label class="img-upload-label" title="Send image" aria-label="Attach image">
             <svg class="btn-icon" aria-hidden="true"><use href="#icon-image"/></svg>
