@@ -394,7 +394,7 @@ async function updateStreakAfterMessage() {
     } else if (diffDays === 1) {
       newStreak = state.streak + 1;
     } else {
-      newStreak = state.streak; // same day, no change
+      newStreak = state.streak;
     }
   }
   if (newStreak !== state.streak || newLastDate !== state.lastMessageDate) {
@@ -444,7 +444,7 @@ el.addFriendForm.addEventListener('submit', async (e) => {
   el.addFriendMessage.textContent = '';
   if (!username) return;
   if (state.profile && username === state.profile.username) {
-    el.addFriendMessage.textContent = "You can't friend yourself.";
+    el.addFriendMessage.textContent = "You can't friend yourself!";
     return;
   }
   const { data: target, error: findError } = await client
