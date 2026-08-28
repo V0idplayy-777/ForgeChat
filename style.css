@@ -609,3 +609,89 @@ body::before {
   cursor: pointer;
 }
 .message-img:hover { opacity: 0.9; }
+
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.4s, box-shadow 0.4s;
+}
+.status-online  { background: #3ecf5a; box-shadow: 0 0 0 2px rgba(62,207,90,0.25); }
+.status-away    { background: #e8b53a; box-shadow: 0 0 0 2px rgba(232,181,58,0.25); }
+.status-offline { background: var(--text-faint); box-shadow: none; }
+
+.friend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.friend-name { flex: 1; }
+
+.friend-status-label {
+  font-family: 'Inconsolata', monospace;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.friend-status-label.status-online  { color: #3ecf5a; }
+.friend-status-label.status-away    { color: #e8b53a; }
+.friend-status-label.status-offline { color: var(--text-faint); }
+
+.chat-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-friend-status {
+  font-family: 'Inconsolata', monospace;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.chat-friend-status.status-online  { color: #3ecf5a; }
+.chat-friend-status.status-away    { color: #e8b53a; }
+.chat-friend-status.status-offline { color: var(--text-faint); }
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 22px 10px;
+  min-height: 32px;
+}
+
+.typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface2);
+  border-left: 3px solid var(--border2);
+  padding: 7px 12px;
+  border-radius: 0 4px 4px 0;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+  display: block;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
+
+.typing-label {
+  font-family: 'Lora', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--text-faint);
+}
