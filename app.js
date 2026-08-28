@@ -1,12 +1,20 @@
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const HEARTBEAT_INTERVAL = 25000;
+const AWAY_TIMEOUT = 2500;
+const TYPING_CLEAR_DELAY = 2500;
+
 const state = {
   user: null,
   profile: null,
   friends: [],
   requests: [],
   selectedFriendId: null,
-  messagesChannel: null,
+  presenceMap: {},
+  mainChannel: null,
+  typingTimers: {},
+  myTypingTimer: null,
+  heartbeatTimer: null,
 };
 
 const el = {
@@ -28,12 +36,13 @@ const el = {
   chatEmpty: document.getElementById('chat-empty'),
   chatActive: document.getElementById('chat-active'),
   chatFriendName: document.getElementById('chat-friend-name'),
+  chatFriendStatus: document.getElementById('chat-friend-status'),
   removeFriendBtn: document.getElementById('remove-friend-btn'),
   messages: document.getElementById('messages'),
+  typingIndicator: document.getElementById('typing-indicator'),
   messageForm: document.getElementById('message-form'),
   messageInput: document.getElementById('message-input'),
   imageInput: document.getElementById('image-input'),
-  sparks: document.getElementById('sparks'),
 };
 
 function switchTab(tab) {
@@ -66,28 +75,22 @@ el.signupForm.addEventListener('submit', async (e) => {
   const password = document.getElementById('signup-password').value;
   el.authMessage.textContent = '';
   const { error } = await client.auth.signUp({
-    email,
-    password,
+    email, password,
     options: { data: { username } },
   });
-  if (error) {
-    el.authMessage.textContent = error.message;
-    return;
-  }
+  if (error) { el.authMessage.textContent = error.message; return; }
   el.authMessage.textContent = 'Check your email to confirm, then sign in.';
   switchTab('signin');
 });
 
 el.signoutBtn.addEventListener('click', async () => {
+  await setMyStatus('offline');
   await client.auth.signOut();
 });
 
 client.auth.onAuthStateChange((event, session) => {
-  if (session?.user) {
-    enterApp(session.user);
-  } else {
-    exitApp();
-  }
+  if (session?.user) enterApp(session.user);
+  else exitApp();
 });
 
 async function enterApp(user) {
@@ -96,15 +99,13 @@ async function enterApp(user) {
   el.appShell.classList.remove('hidden');
 
   const { data: profile } = await client
-    .from('profiles')
-    .select('id, username')
-    .eq('id', user.id)
-    .single();
+    .from('profiles').select('id, username').eq('id', user.id).single();
   state.profile = profile;
   el.currentUsername.textContent = profile ? '@' + profile.username : '';
 
   await loadFriends();
   await loadRequests();
+  await initPresence();
   subscribeRealtime();
 }
 
@@ -114,10 +115,9 @@ function exitApp() {
   state.friends = [];
   state.requests = [];
   state.selectedFriendId = null;
-  if (state.messagesChannel) {
-    client.removeChannel(state.messagesChannel);
-    state.messagesChannel = null;
-  }
+  state.presenceMap = {};
+  clearInterval(state.heartbeatTimer);
+  if (state.mainChannel) { client.removeChannel(state.mainChannel); state.mainChannel = null; }
   el.appShell.classList.add('hidden');
   el.authScreen.classList.remove('hidden');
   el.friendsList.innerHTML = '';
@@ -134,9 +134,7 @@ async function loadFriends() {
     .select('id, sender_id, receiver_id, sender:sender_id(id,username), receiver:receiver_id(id,username)')
     .eq('status', 'accepted')
     .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`);
-
   if (error) return;
-
   state.friends = data.map((row) => {
     const friend = row.sender_id === uid ? row.receiver : row.sender;
     return { id: friend.id, username: friend.username, rowId: row.id };
@@ -150,21 +148,54 @@ async function loadRequests() {
     .select('id, sender:sender_id(id,username)')
     .eq('receiver_id', state.user.id)
     .eq('status', 'pending');
-
   if (error) return;
   state.requests = data;
   renderRequests();
 }
 
+function getStatusMeta(status) {
+  if (status === 'online')  return { cls: 'status-online',  label: 'Online' };
+  if (status === 'away')    return { cls: 'status-away',    label: 'Away' };
+  return                           { cls: 'status-offline', label: 'Offline' };
+}
+
 function renderFriends() {
   el.friendsList.innerHTML = '';
   state.friends.forEach((friend) => {
+    const status = state.presenceMap[friend.id] || 'offline';
+    const { cls, label } = getStatusMeta(status);
     const li = document.createElement('li');
     li.className = 'friend-item' + (friend.id === state.selectedFriendId ? ' active' : '');
-    li.innerHTML = `<span class="friend-dot"></span><span>@${friend.username}</span>`;
+    li.dataset.friendId = friend.id;
+    li.innerHTML = `
+      <span class="presence-dot ${cls}" title="${label}"></span>
+      <span class="friend-name">@${friend.username}</span>
+      <span class="friend-status-label ${cls}">${label}</span>
+    `;
     li.addEventListener('click', () => selectFriend(friend));
     el.friendsList.appendChild(li);
   });
+}
+
+function updateFriendPresenceDot(userId) {
+  const status = state.presenceMap[userId] || 'offline';
+  const { cls, label } = getStatusMeta(status);
+  const li = el.friendsList.querySelector(`[data-friend-id="${userId}"]`);
+  if (!li) return;
+  const dot = li.querySelector('.presence-dot');
+  const lbl = li.querySelector('.friend-status-label');
+  dot.className = `presence-dot ${cls}`;
+  dot.title = label;
+  lbl.className = `friend-status-label ${cls}`;
+  lbl.textContent = label;
+  if (userId === state.selectedFriendId) updateChatHeaderStatus(userId);
+}
+
+function updateChatHeaderStatus(userId) {
+  const status = state.presenceMap[userId] || 'offline';
+  const { cls, label } = getStatusMeta(status);
+  el.chatFriendStatus.className = `chat-friend-status ${cls}`;
+  el.chatFriendStatus.textContent = label;
 }
 
 function renderRequests() {
@@ -202,28 +233,16 @@ el.addFriendForm.addEventListener('submit', async (e) => {
     el.addFriendMessage.textContent = "You can't friend yourself.";
     return;
   }
-
   const { data: target, error: findError } = await client
-    .from('profiles')
-    .select('id, username')
-    .eq('username', username)
-    .maybeSingle();
-
-  if (findError || !target) {
-    el.addFriendMessage.textContent = 'No user with that username.';
-    return;
-  }
-
+    .from('profiles').select('id, username').eq('username', username).maybeSingle();
+  if (findError || !target) { el.addFriendMessage.textContent = 'No user with that username.'; return; }
   const { error } = await client.from('friend_requests').insert({
-    sender_id: state.user.id,
-    receiver_id: target.id,
+    sender_id: state.user.id, receiver_id: target.id,
   });
-
   if (error) {
     el.addFriendMessage.textContent = error.code === '23505' ? 'Request already exists.' : 'Could not send request.';
     return;
   }
-
   el.addFriendMessage.textContent = 'Request sent.';
   el.addFriendInput.value = '';
 });
@@ -231,14 +250,8 @@ el.addFriendForm.addEventListener('submit', async (e) => {
 el.removeFriendBtn.addEventListener('click', async () => {
   if (!state.selectedFriendId) return;
   const friend = state.friends.find(f => f.id === state.selectedFriendId);
-  if (!friend) return;
-  if (!confirm(`Remove @${friend.username} as a friend?`)) return;
-
-  await client
-    .from('friend_requests')
-    .delete()
-    .eq('id', friend.rowId);
-
+  if (!friend || !confirm(`Remove @${friend.username} as a friend?`)) return;
+  await client.from('friend_requests').delete().eq('id', friend.rowId);
   state.selectedFriendId = null;
   el.chatActive.classList.add('hidden');
   el.chatEmpty.classList.remove('hidden');
@@ -250,7 +263,9 @@ async function selectFriend(friend) {
   el.chatEmpty.classList.add('hidden');
   el.chatActive.classList.remove('hidden');
   el.chatFriendName.textContent = '@' + friend.username;
+  updateChatHeaderStatus(friend.id);
   renderFriends();
+  hideTyping(friend.id);
   await loadMessages(friend.id);
 }
 
@@ -261,7 +276,6 @@ async function loadMessages(friendId) {
     .select('id, sender_id, content, image_url, created_at')
     .or(`and(sender_id.eq.${uid},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${uid})`)
     .order('created_at', { ascending: true });
-
   if (error) return;
   el.messages.innerHTML = '';
   data.forEach(renderMessage);
@@ -273,7 +287,6 @@ function renderMessage(msg) {
   const mine = msg.sender_id === state.user.id;
   div.className = 'message-bubble ' + (mine ? 'message-mine' : 'message-theirs');
   const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
   if (msg.image_url) {
     div.innerHTML = `<img class="message-img" src="${msg.image_url}" alt="image" loading="lazy"><span class="message-time">${time}</span>`;
   } else {
@@ -292,21 +305,12 @@ el.imageInput.addEventListener('change', async () => {
   const file = el.imageInput.files[0];
   if (!file || !state.selectedFriendId) return;
   el.imageInput.value = '';
-
   const ext = file.name.split('.').pop();
   const path = `${state.user.id}/${Date.now()}.${ext}`;
-
   const { error: uploadError } = await client.storage
-    .from('chat-images')
-    .upload(path, file, { contentType: file.type });
-
-  if (uploadError) {
-    alert('Image upload failed: ' + uploadError.message);
-    return;
-  }
-
+    .from('chat-images').upload(path, file, { contentType: file.type });
+  if (uploadError) { alert('Image upload failed: ' + uploadError.message); return; }
   const { data: urlData } = client.storage.from('chat-images').getPublicUrl(path);
-
   await client.from('messages').insert({
     sender_id: state.user.id,
     receiver_id: state.selectedFriendId,
@@ -320,23 +324,95 @@ el.messageForm.addEventListener('submit', async (e) => {
   const content = el.messageInput.value.trim();
   if (!content || !state.selectedFriendId) return;
   el.messageInput.value = '';
+  broadcastTyping(false);
   await client.from('messages').insert({
     sender_id: state.user.id,
     receiver_id: state.selectedFriendId,
-    content,
-    image_url: null,
+    content, image_url: null,
   });
 });
 
+el.messageInput.addEventListener('input', () => {
+  if (!state.selectedFriendId) return;
+  broadcastTyping(true);
+  clearTimeout(state.myTypingTimer);
+  state.myTypingTimer = setTimeout(() => broadcastTyping(false), TYPING_CLEAR_DELAY);
+});
+
+function broadcastTyping(isTyping) {
+  if (!state.mainChannel || !state.selectedFriendId) return;
+  state.mainChannel.send({
+    type: 'broadcast',
+    event: 'typing',
+    payload: {
+      from: state.user.id,
+      to: state.selectedFriendId,
+      typing: isTyping,
+    },
+  });
+}
+
+function showTyping(userId) {
+  if (userId !== state.selectedFriendId) return;
+  el.typingIndicator.classList.remove('hidden');
+  el.messages.scrollTop = el.messages.scrollHeight;
+}
+
+function hideTyping(userId) {
+  if (userId !== state.selectedFriendId && userId !== undefined) return;
+  el.typingIndicator.classList.add('hidden');
+}
+
+async function setMyStatus(status) {
+  if (!state.user) return;
+  await client.from('presence').upsert({
+    user_id: state.user.id,
+    status,
+    last_seen: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
+}
+
+async function initPresence() {
+  await setMyStatus('online');
+
+  const friendIds = state.friends.map(f => f.id);
+  if (friendIds.length > 0) {
+    const { data } = await client
+      .from('presence')
+      .select('user_id, status')
+      .in('user_id', friendIds);
+    if (data) {
+      data.forEach(row => { state.presenceMap[row.user_id] = row.status; });
+      renderFriends();
+    }
+  }
+
+  state.heartbeatTimer = setInterval(async () => {
+    const status = document.hidden ? 'away' : 'online';
+    await setMyStatus(status);
+  }, HEARTBEAT_INTERVAL);
+
+  document.addEventListener('visibilitychange', () => {
+    setMyStatus(document.hidden ? 'away' : 'online');
+  });
+
+  window.addEventListener('beforeunload', () => {
+    navigator.sendBeacon(
+      `${SUPABASE_URL}/rest/v1/presence?user_id=eq.${state.user.id}`,
+      JSON.stringify({ status: 'offline', last_seen: new Date().toISOString() })
+    );
+  });
+}
+
 function subscribeRealtime() {
-  state.messagesChannel = client
-    .channel('forgechat-realtime')
+  state.mainChannel = client
+    .channel('forgechat-main')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
       const msg = payload.new;
       const uid = state.user.id;
-      const involvesMe = msg.sender_id === uid || msg.receiver_id === uid;
-      if (!involvesMe) return;
+      if (msg.sender_id !== uid && msg.receiver_id !== uid) return;
       const otherId = msg.sender_id === uid ? msg.receiver_id : msg.sender_id;
+      hideTyping(otherId);
       if (otherId === state.selectedFriendId) {
         renderMessage(msg);
         el.messages.scrollTop = el.messages.scrollHeight;
@@ -349,6 +425,24 @@ function subscribeRealtime() {
       if (payload.new.sender_id === state.user.id || payload.new.receiver_id === state.user.id) {
         loadRequests();
         loadFriends();
+      }
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'presence' }, (payload) => {
+      const row = payload.new;
+      const isFriend = state.friends.some(f => f.id === row.user_id);
+      if (!isFriend) return;
+      state.presenceMap[row.user_id] = row.status;
+      updateFriendPresenceDot(row.user_id);
+    })
+    .on('broadcast', { event: 'typing' }, (payload) => {
+      const { from, to, typing } = payload.payload;
+      if (to !== state.user.id) return;
+      clearTimeout(state.typingTimers[from]);
+      if (typing) {
+        showTyping(from);
+        state.typingTimers[from] = setTimeout(() => hideTyping(from), TYPING_CLEAR_DELAY + 500);
+      } else {
+        hideTyping(from);
       }
     })
     .subscribe();
