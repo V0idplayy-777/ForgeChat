@@ -281,7 +281,6 @@ function updateMyProfileDisplay() {
 }
 
 function toggleAdminButton() {
-  const btn = document.getElementById('admin-panel-btn');
   if (isAdmin()) {
     btn.classList.remove('admin-only');
   } else {
