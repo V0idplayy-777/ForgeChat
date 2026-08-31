@@ -895,7 +895,7 @@ async function searchUsers(query) {
   document.getElementById('admin-results').innerHTML = html;
 }
 
-document.getElementById('admin-search-input').addEventListener('input', async (e) => {
+document.getElementById('add-friend-input').addEventListener('blur', () => {
   const query = e.target.value.trim();
 
   if (!query) {
