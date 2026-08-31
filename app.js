@@ -319,13 +319,17 @@ async function searchUsersForAutocomplete(query) {
   }
   const uid = state.user.id;
   const friendIds = state.friends.map(f => f.id);
-  const { data, error } = await client
+  let request = client
     .from('profiles')
     .select('id, username, avatar_url')
     .ilike('username', `%${query}%`)
-    .not('id', 'eq', uid)
-    .not('id', 'in', `(${friendIds.join(',')})`)
-    .limit(10);
+    .neq('id', uid);
+
+  if (friendIds.length > 0) {
+    request = request.not('id', 'in', `(${friendIds.join(',')})`);
+  }
+
+  const { data, error } = await request.limit(10);
   if (error) {
     renderAutocompleteItems([]);
     return;
