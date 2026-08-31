@@ -163,56 +163,37 @@ async function loadFriends() {
 
   const uid = state.user.id;
 
-  const { data: rows, error: requestError } = await client
+  const { data, error } = await client
     .from('friend_requests')
-    .select('id, sender_id, receiver_id')
+    .select(`
+      id,
+      sender_id,
+      receiver_id,
+      sender:profiles!friend_requests_sender_id_fkey(id,username,avatar_url,status_message),
+      receiver:profiles!friend_requests_receiver_id_fkey(id,username,avatar_url,status_message)
+    `)
     .eq('status', 'accepted')
     .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`);
 
-  if (requestError) {
-    console.error('Failed to load friends:', requestError);
+  if (error) {
+    console.error('loadFriends error:', error);
     state.friends = [];
     renderFriends();
     return;
   }
 
-  if (!rows || rows.length === 0) {
-    state.friends = [];
-    renderFriends();
-    return;
-  }
-
-  const friendRows = rows.map(row => ({
-    rowId: row.id,
-    friendId: row.sender_id === uid ? row.receiver_id : row.sender_id
-  }));
-
-  const friendIds = friendRows.map(row => row.friendId);
-
-  const { data: profiles, error: profileError } = await client
-    .from('profiles')
-    .select('id, username, avatar_url, status_message')
-    .in('id', friendIds);
-
-  if (profileError) {
-    console.error('Failed to load friend profiles:', profileError);
-    state.friends = [];
-    renderFriends();
-    return;
-  }
-
-  const profileMap = Object.fromEntries((profiles || []).map(profile => [profile.id, profile]));
-
-  state.friends = friendRows
+  state.friends = (data || [])
     .map(row => {
-      const friend = profileMap[row.friendId];
+      const friend = row.sender_id === uid ? row.receiver : row.sender;
+
       if (!friend) return null;
+
       return {
         id: friend.id,
         username: friend.username,
         avatar_url: friend.avatar_url,
         status_message: friend.status_message,
-        rowId: row.rowId
+        rowId: row.id
       };
     })
     .filter(Boolean);
