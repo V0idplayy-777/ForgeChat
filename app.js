@@ -1,5 +1,9 @@
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+window.addEventListener('error', (event) => {
+  console.error('ForgeChat error:', event.error || event.message);
+});
+
 const HEARTBEAT_INTERVAL = 25000;
 const AWAY_TIMEOUT = 2500;
 const TYPING_CLEAR_DELAY = 2500;
