@@ -201,7 +201,8 @@ function renderFriends() {
     const statusMsg = friend.status_message ? `<span class="friend-status-msg">${escapeHtml(friend.status_message)}</span>` : '';
     li.innerHTML = `
       ${avatarHtml}
-      <span class="friend-name">@${friend.username}</span>
+      <span class="presence-dot ${cls}" title="${label}"></span>
+      <span class="friend-name">@${escapeHtml(friend.username)}</span>
       ${statusMsg}
       <span class="friend-status-label ${cls}">${label}</span>
       ${count > 0 ? `<span class="unread-badge">${count}</span>` : ''}
