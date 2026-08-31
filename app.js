@@ -899,7 +899,7 @@ async function searchUsers(query) {
   document.getElementById('admin-results').innerHTML = html;
 }
 
-document.getElementById('add-friend-input').addEventListener('blur', () => {
+document.getElementById('add-friend-input').addEventListener('blur', async (e) => {
   const query = e.target.value.trim();
 
   if (!query) {
