@@ -804,3 +804,26 @@ body::before {
   text-align: center;
   padding: 20px 0;
 }
+
+.autocomplete-list {
+  position: relative;
+  z-index: 20;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.autocomplete-item:hover {
+  background: var(--border);
+}
