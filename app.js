@@ -903,7 +903,7 @@ document.getElementById('add-friend-input').addEventListener('blur', async (e) =
   const query = e.target.value.trim();
 
   if (!query) {
-    loadAllUsersForAdmin();
+    await loadAllUsersForAdmin();
     return;
   }
 
