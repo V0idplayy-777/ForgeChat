@@ -924,19 +924,6 @@ document.getElementById('admin-search-input').addEventListener('input', async (e
   })));
 });
 
-  client.from('profiles')
-    .select('id, username, avatar_url, bio, status_message')
-    .ilike('username', `%${query}%`)
-    .order('username')
-    .then(({ data, error }) => {
-      if (error) {
-        document.getElementById('admin-results').innerHTML = `<div class="admin-empty">Error searching.</div>`;
-        return;
-      }
-      renderAdminUsers(data || []);
-    });
-});
-
 document.getElementById('add-friend-input').addEventListener('blur', () => {
   setTimeout(() => {
     document.getElementById('add-friend-autocomplete').classList.add('hidden');
