@@ -338,15 +338,26 @@ async function searchUsersForAutocomplete(query) {
 }
 
 async function loadAllUsersForAdmin() {
+  if (!isAdmin()) return;
   const { data, error } = await client
     .from('profiles')
     .select('id, username, avatar_url, bio, status_message')
     .order('username');
+
   if (error) {
     document.getElementById('admin-results').innerHTML = `<div class="admin-empty">Error loading users.</div>`;
     return;
   }
-  renderAdminUsers(data || []);
+
+  const { data: emails, error: emailError } = await client.rpc('get_admin_user_emails');
+
+  if (emailError) {
+    renderAdminUsers(data || []);
+    return;
+  }
+
+  const emailMap = Object.fromEntries((emails || []).map(user => [user.id, user.email]));
+  renderAdminUsers((data || []).map(user => ({ ...user, email: emailMap[user.id] || 'Unavailable' })));
 }
 
 function renderAdminUsers(users) {
@@ -355,33 +366,59 @@ function renderAdminUsers(users) {
     container.innerHTML = `<div class="admin-empty">No users found.</div>`;
     return;
   }
+
   const html = users.map(user => {
     const avatar = user.avatar_url
       ? `<img class="friend-avatar" src="${user.avatar_url}" alt="">`
       : `<span class="friend-avatar-letter">${user.username.charAt(0).toUpperCase()}</span>`;
+
+    const isSelf = state.user?.id === user.id;
+    const existingFriend = state.friends.some(friend => friend.id === user.id);
+
+    let button = '';
+    if (!isSelf) {
+      button = existingFriend
+        ? `<button class="admin-friend-btn" type="button" disabled>Friends</button>`
+        : `<button class="admin-friend-btn" type="button" data-user-id="${user.id}" data-username="${escapeHtml(user.username)}">Add Friend</button>`;
+    }
+
     return `<div class="admin-user-item">
       ${avatar}
       <div class="admin-user-info">
-        <span class="admin-user-name">@${user.username}</span>
-        <span class="admin-user-status">${user.status_message || ''}</span>
-        <span class="admin-user-bio">${user.bio || ''}</span>
+        <span class="admin-user-name">@${escapeHtml(user.username)}</span>
+        <span class="admin-user-email">${escapeHtml(user.email || 'Unavailable')}</span>
+        <span class="admin-user-status">${escapeHtml(user.status_message || '')}</span>
+        <span class="admin-user-bio">${escapeHtml(user.bio || '')}</span>
       </div>
+      ${button}
     </div>`;
   }).join('');
+
   container.innerHTML = html;
+
+  container.querySelectorAll('.admin-friend-btn:not(:disabled)').forEach(button => {
+    button.addEventListener('click', () => sendAdminFriendRequest(button.dataset.userId, button.dataset.username, button));
+  });
 }
 
-async function checkAndResetStreak() {
-  if (!state.lastMessageDate) return;
-  const today = new Date().toISOString().split('T')[0];
-  const lastDate = state.lastMessageDate.split('T')[0];
-  const diffDays = Math.floor((new Date(today) - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-  if (diffDays > 1) {
-    state.streak = 0;
-    state.lastMessageDate = lastDate;
-    await client.from('profiles').update({ streak: 0 }).eq('id', state.user.id);
-    updateStreakDisplay();
+async function sendAdminFriendRequest(userId, username, button) {
+  if (!isAdmin() || !userId || userId === state.user.id) return;
+
+  button.disabled = true;
+  button.textContent = 'Sending...';
+
+  const { error } = await client.from('friend_requests').insert({
+    sender_id: state.user.id,
+    receiver_id: userId,
+  });
+
+  if (error) {
+    button.disabled = false;
+    button.textContent = error.code === '23505' ? 'Already Sent' : 'Add Friend';
+    return;
   }
+
+  button.textContent = 'Request Sent';
 }
 
 async function updateStreakAfterMessage() {
@@ -858,12 +895,34 @@ async function searchUsers(query) {
   document.getElementById('admin-results').innerHTML = html;
 }
 
-document.getElementById('admin-search-input').addEventListener('input', (e) => {
+document.getElementById('admin-search-input').addEventListener('input', async (e) => {
   const query = e.target.value.trim();
+
   if (!query) {
-    loadAllUsersForAdmin();
+    await loadAllUsersForAdmin();
     return;
   }
+
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, username, avatar_url, bio, status_message')
+    .ilike('username', `%${query}%`)
+    .order('username')
+    .limit(50);
+
+  if (error) {
+    document.getElementById('admin-results').innerHTML = `<div class="admin-empty">Error searching.</div>`;
+    return;
+  }
+
+  const { data: emails } = await client.rpc('get_admin_user_emails');
+  const emailMap = Object.fromEntries((emails || []).map(user => [user.id, user.email]));
+
+  renderAdminUsers((data || []).map(user => ({
+    ...user,
+    email: emailMap[user.id] || 'Unavailable'
+  })));
+});
 
   client.from('profiles')
     .select('id, username, avatar_url, bio, status_message')
