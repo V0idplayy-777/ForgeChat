@@ -159,17 +159,64 @@ function exitApp() {
 }
 
 async function loadFriends() {
+  if (!state.user) return;
+
   const uid = state.user.id;
-  const { data, error } = await client
+
+  const { data: rows, error: requestError } = await client
     .from('friend_requests')
-    .select('id, sender_id, receiver_id, sender:sender_id(id,username,avatar_url,status_message), receiver:receiver_id(id,username,avatar_url,status_message)')
+    .select('id, sender_id, receiver_id')
     .eq('status', 'accepted')
     .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`);
-  if (error) return;
-  state.friends = data.map((row) => {
-    const friend = row.sender_id === uid ? row.receiver : row.sender;
-    return { id: friend.id, username: friend.username, avatar_url: friend.avatar_url, status_message: friend.status_message, rowId: row.id };
-  });
+
+  if (requestError) {
+    console.error('Failed to load friends:', requestError);
+    state.friends = [];
+    renderFriends();
+    return;
+  }
+
+  if (!rows || rows.length === 0) {
+    state.friends = [];
+    renderFriends();
+    return;
+  }
+
+  const friendRows = rows.map(row => ({
+    rowId: row.id,
+    friendId: row.sender_id === uid ? row.receiver_id : row.sender_id
+  }));
+
+  const friendIds = friendRows.map(row => row.friendId);
+
+  const { data: profiles, error: profileError } = await client
+    .from('profiles')
+    .select('id, username, avatar_url, status_message')
+    .in('id', friendIds);
+
+  if (profileError) {
+    console.error('Failed to load friend profiles:', profileError);
+    state.friends = [];
+    renderFriends();
+    return;
+  }
+
+  const profileMap = Object.fromEntries((profiles || []).map(profile => [profile.id, profile]));
+
+  state.friends = friendRows
+    .map(row => {
+      const friend = profileMap[row.friendId];
+      if (!friend) return null;
+      return {
+        id: friend.id,
+        username: friend.username,
+        avatar_url: friend.avatar_url,
+        status_message: friend.status_message,
+        rowId: row.rowId
+      };
+    })
+    .filter(Boolean);
+
   renderFriends();
 }
 
