@@ -799,6 +799,34 @@ body::before {
   font-size: 12px;
   color: var(--text-faint);
 }
+
+.admin-user-item .admin-user-email {
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.admin-friend-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 10px;
+  font-family: 'Inconsolata', monospace;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.admin-friend-btn:hover:not(:disabled) {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.admin-friend-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .admin-empty {
   color: var(--text-dim);
   text-align: center;
