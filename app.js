@@ -455,12 +455,43 @@ function renderAdminUsers(users) {
 async function sendAdminFriendRequest(userId, username, button) {
   if (!isAdmin() || !userId || userId === state.user.id) return;
 
+  const existingFriend = state.friends.some(friend => friend.id === userId);
+
+  if (existingFriend) {
+    button.disabled = true;
+    button.textContent = 'Friends';
+    return;
+  }
+
   button.disabled = true;
-  button.textContent = 'Sending...';
+  button.textContent = 'Checking...';
+
+  const { data: existingRequests, error: checkError } = await client
+    .from('friend_requests')
+    .select('id, sender_id, receiver_id, status')
+    .or(`and(sender_id.eq.${state.user.id},receiver_id.eq.${userId}),and(sender_id.eq.${userId},receiver_id.eq.${state.user.id})`);
+
+  if (checkError) {
+    button.disabled = false;
+    button.textContent = 'Add Friend';
+    return;
+  }
+
+  const existing = (existingRequests || []).find(request =>
+    request.status === 'accepted' ||
+    request.status === 'pending'
+  );
+
+  if (existing) {
+    button.disabled = true;
+    button.textContent = existing.status === 'accepted' ? 'Friends' : 'Already Sent';
+    return;
+  }
 
   const { error } = await client.from('friend_requests').insert({
     sender_id: state.user.id,
     receiver_id: userId,
+    status: 'pending'
   });
 
   if (error) {
@@ -538,9 +569,36 @@ el.addFriendForm.addEventListener('submit', async (e) => {
     return;
   }
   const { data: target, error: findError } = await client
-    .from('profiles').select('id, username').eq('username', username).maybeSingle();
-  if (findError || !target) { el.addFriendMessage.textContent = 'No user with that username.'; return; }
-  const { error } = await client.from('friend_requests').insert({
+  .from('profiles').select('id, username').eq('username', username).maybeSingle();
+
+if (findError || !target) {
+  el.addFriendMessage.textContent = 'No user with that username.';
+  return;
+}
+
+const { data: existingRequests, error: checkError } = await client
+  .from('friend_requests')
+  .select('id, sender_id, receiver_id, status')
+  .or(`and(sender_id.eq.${state.user.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${state.user.id})`);
+
+if (checkError) {
+  el.addFriendMessage.textContent = 'Could not check friendship status.';
+  return;
+}
+
+const existing = (existingRequests || []).find(request =>
+  request.status === 'accepted' ||
+  request.status === 'pending'
+);
+
+if (existing) {
+  el.addFriendMessage.textContent = existing.status === 'accepted'
+    ? 'You are already friends with this user.'
+    : 'A friend request already exists.';
+  return;
+}
+
+const { error } = await client.from('friend_requests').insert({
     sender_id: state.user.id, receiver_id: target.id,
   });
   if (error) {
