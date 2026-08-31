@@ -281,11 +281,9 @@ function updateMyProfileDisplay() {
 }
 
 function toggleAdminButton() {
-  if (isAdmin()) {
-    btn.classList.remove('admin-only');
-  } else {
-    btn.classList.add('admin-only');
-  }
+  const btn = document.getElementById('admin-panel-btn');
+  if (!btn) return;
+  btn.classList.toggle('admin-only', !isAdmin());
 }
 
 function renderAutocompleteItems(users) {
